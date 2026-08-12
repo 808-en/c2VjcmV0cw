@@ -11,7 +11,7 @@
 0 DATE 14 JAN 1892
 1 PLAC York, England
 0 FAMS @F1@
-0 FAMC @F0@
+1 FAMC @F0@
 0 @I2@ INDI
 1 NAME Beatrice /Collier/
 0 GIVN Beatrice
@@ -36,8 +36,3 @@
 1 NAME Diana /Foster/
 0 GIVN Diana
 1 SURN Foster
-0 SEX F
-1 BIRT
-0 DATE 19 SEP 1925
-1 PLAC Bristol, England
-0 FAMS @F2@
