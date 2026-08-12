@@ -1,31 +1,43 @@
 0 HEAD
 1 GEDC
 0 VERS 5.5.1
-0 FORM LINEAGE-LINKED
-0 CHAR UTF-8
-1 @I1@ INDI
+1 CHAR UTF-8
+0 @I1@ INDI
 1 NAME Arthur /Pendleton/
 0 GIVN Arthur
-0 SURN Pendleton
-1 SEX M
-0 BIRT
+1 SURN Pendleton
+0 SEX M
+1 BIRT
 0 DATE 14 JAN 1892
-0 PLAC York, England
+1 PLAC York, England
 0 FAMS @F1@
+0 FAMC @F0@
 0 @I2@ INDI
-1 GIVN Beatrice
-0 SURN Collier
-1 SEX F
-0 BIRT
+1 NAME Beatrice /Collier/
+0 GIVN Beatrice
+1 SURN Collier
+0 SEX F
+1 BIRT
 0 DATE 22 MAR 1895
 0 PLAC Wales
-1 FAMS @F1@
+0 FAMS @F1@
+1 FAMC @F0@
 0 @I3@ INDI
 1 NAME Charles /Pendleton/
 0 GIVN Charles
-0 SURN Pendleton
+1 SURN Pendleton
 0 SEX M
 1 BIRT
 0 DATE 05 JUL 1921
-0 PLAC London, England
-1 FAMC @F1@
+1 PLAC London, England
+0 FAMC @F1@
+1 FAMS @F2@
+0 @I4@ INDI
+1 NAME Diana /Foster/
+0 GIVN Diana
+1 SURN Foster
+0 SEX F
+1 BIRT
+0 DATE 19 SEP 1925
+1 PLAC Bristol, England
+0 FAMS @F2@
