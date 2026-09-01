@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D T-Shirt Designer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/OBJLoader.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #27272a; }
+        ::-webkit-scrollbar-thumb { background: #52525b; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #71717a; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background-color: #18181b; color: #e4e4e7; user-select: none; font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif; }
+        input[type="color"] { -webkit-appearance: none; border: none; padding: 0; }
+        input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+        input[type="color"]::-webkit-color-swatch { border: 1px solid #3f3f46; border-radius: 4px; }
+        input[type="range"] { accent-color: #84cc16; }
+        .collapse-content { transition: max-height 0.3s ease-out; overflow: hidden; max-height: 0; }
+        .collapse-content.expanded { max-height: 1000px; overflow: visible; }
+        .fa-icon-drag { cursor: grab; font-size: 1.5rem; display: inline-block; padding: 8px; border-radius: 4px; transition: background 0.2s; }
+        .fa-icon-drag:hover { background: #3f3f46; }
+        .recording-overlay { display: none; position: absolute; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; align-items: center; justify-content: center; flex-direction: column; }
+        .recording-overlay.active { display: flex; }
+        .spinner { border: 4px solid #3f3f46; border-top: 4px solid #84cc16; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="recordingOverlay" class="recording-overlay">
+        <div class="spinner mb-4"></div>
+        <div class="text-xl font-semibold text-lime-400">Rendering GIF...</div>
+    </div>
+
+    <div class="flex w-full h-full relative">
+        <div id="canvas-container" class="flex-1 relative cursor-move"></div>
+
+        <div id="editor-panel" class="absolute top-4 left-4 bg-zinc-900 border border-zinc-700 shadow-2xl rounded-lg flex flex-col w-80 z-10 transition-transform duration-300">
+            <div class="flex items-center justify-between p-3 border-b border-zinc-700 bg-zinc-800 rounded-t-lg cursor-pointer" id="editor-header">
+                <span class="font-semibold text-sm tracking-wide">2D Design View</span>
+                <button id="editor-toggle" class="text-zinc-400 hover:text-white"><i class="fas fa-chevron-up"></i></button>
+            </div>
+            <div id="editor-body" class="p-4 flex flex-col items-center gap-4 bg-zinc-900 rounded-b-lg">
+                <div class="relative w-64 h-64 border border-zinc-700 bg-white rounded shadow-inner" id="fabric-container">
+                    <canvas id="fabric-canvas" width="256" height="256"></canvas>
+                </div>
+                <div class="flex gap-2 w-full">
+                    <button id="btn-draw" class="flex-1 bg-zinc-800 hover:bg-zinc-700 text-xs py-2 rounded border border-zinc-600"><i class="fas fa-pen mr-1"></i> Draw</button>
+                    <button id="btn-clear" class="flex-1 bg-red-900/50 hover:bg-red-800/50 text-red-200 text-xs py-2 rounded border border-red-700/50"><i class="fas fa-trash mr-1"></i> Clear</button>
+                </div>
+                <div id="draw-tools" class="w-full hidden flex-col gap-2 p-2 bg-zinc-800 rounded border border-zinc-700">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs">Brush Color</label>
+                        <input type="color" id="draw-color" value="#000000" class="w-6 h-6">
+                    </div>
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs">Brush Size</label>
+                        <input type="range" id="draw-size" min="1" max="50" value="5" class="w-24">
+                    </div>
+                    <button id="btn-erase" class="w-full bg-zinc-700 hover:bg-zinc-600 text-xs py-1 rounded">Eraser Mode</button>
+                </div>
+                <div id="object-tools" class="w-full hidden flex-col gap-2 p-2 bg-zinc-800 rounded border border-zinc-700">
+                    <div class="flex items-center justify-between">
+                        <label class="text-xs">Color</label>
+                        <input type="color" id="obj-color" value="#000000" class="w-6 h-6">
+                    </div>
+                    <button id="btn-del-obj" class="w-full bg-red-900/50 hover:bg-red-800/50 text-red-200 text-xs py-1 rounded border border-red-700/50">Delete Selected</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="w-80 bg-zinc-900 border-l border-zinc-700 flex flex-col h-full z-10 shadow-xl overflow-y-auto">
+            <div class="p-4 border-b border-zinc-800 bg-zinc-950">
+                <h1 class="text-lg font-bold text-lime-400 uppercase tracking-wider">Shirt Designer</h1>
+            </div>
+
+            <div class="accordion-section border-b border-zinc-800">
+                <div class="accordion-header flex justify-between items-center p-4 bg-zinc-800/50 hover:bg-zinc-800 cursor-pointer" onclick="toggleAccordion('shirt-type')">
+                    <span class="font-semibold text-sm">Shirt Type</span>
+                    <i class="fas fa-chevron-down text-zinc-500 text-xs"></i>
+                </div>
+                <div id="shirt-type" class="collapse-content expanded bg-zinc-900">
+                    <div class="p-4 flex flex-col gap-3">
+                        <select id="shirt-model-select" class="w-full bg-zinc-800 border border-zinc-700 rounded p-2 text-sm outline-none focus:border-lime-500">
+                            <option value="mens">Men's T-Shirt (Procedural)</option>
+                            <option value="womens">Women's T-Shirt (Procedural)</option>
+                            <option value="longsleeve">Long-Sleeve Shirt (Procedural)</option>
+                            <option value="realistic_glb">Realistic 3D Shirt (.glb Asset)</option>
+                        </select>
+                        <div class="flex flex-col gap-1 border-t border-zinc-800 pt-2">
+                            <span class="text-xs text-zinc-400">Upload Custom 3D Model (.obj / .glb)</span>
+                            <input type="file" id="model-file-upload" accept=".obj,.glb,.gltf" class="text-xs text-zinc-400 file:mr-2 file:py-1.5 file:px-3 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-zinc-800 file:text-lime-400 hover:file:bg-zinc-700 cursor-pointer">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-section border-b border-zinc-800">
+                <div class="accordion-header flex justify-between items-center p-4 bg-zinc-800/50 hover:bg-zinc-800 cursor-pointer" onclick="toggleAccordion('env-settings')">
+                    <span class="font-semibold text-sm">Environment</span>
+                    <i class="fas fa-chevron-down text-zinc-500 text-xs"></i>
+                </div>
+                <div id="env-settings" class="collapse-content bg-zinc-900">
+                    <div class="p-4 flex flex-col gap-4">
+                        <select id="bg-type" class="w-full bg-zinc-800 border border-zinc-700 rounded p-2 text-sm outline-none">
+                            <option value="solid">Solid Color</option>
+                            <option value="image">Background Image</option>
+                            <option value="skybox">Skybox</option>
+                        </select>
+                        <div id="bg-solid-controls" class="flex items-center justify-between">
+                            <span class="text-sm">Color</span>
+                            <input type="color" id="bg-color" value="#27272a" class="w-8 h-8">
+                        </div>
+                        <div id="bg-img-controls" class="hidden">
+                            <input type="file" id="bg-img-upload" accept="image/*" class="text-xs w-full text-zinc-400 file:mr-4 file:py-2 file:px-4 file:rounded file:border-0 file:text-xs file:font-semibold file:bg-zinc-800 file:text-lime-400 hover:file:bg-zinc-700">
+                        </div>
+                        <div id="bg-skybox-controls" class="hidden grid grid-cols-2 gap-2 text-center text-xs">
+                            <div class="flex flex-col gap-1"><label class="bg-zinc-800 p-2 rounded border border-zinc-700 cursor-pointer">+X (Right)<input type="file" class="hidden skybox-input" data-face="0"></label></div>
+                            <div class="flex flex-col gap-1"><label class="bg-zinc-800 p-2 rounded border border-zinc-700 cursor-pointer">-X (Left)<input type="file" class="hidden skybox-input" data-face="1"></label></div>
+                            <div class="flex flex-col gap-1"><label class="bg-zinc-800 p-2 rounded border border-zinc-700 cursor-pointer">+Y (Top)<input type="file" class="hidden skybox-input" data-face="2"></label></div>
+                            <div class="flex flex-col gap-1"><label class="bg-zinc-800 p-2 rounded border border-zinc-700 cursor-pointer">-Y (Bottom)<input type="file" class="hidden skybox-input" data-face="3"></label></div>
+                            <div class="flex flex-col gap-1"><label class="bg-zinc-800 p-2 rounded border border-zinc-700 cursor-pointer">+Z (Front)<input type="file" class="hidden skybox-input" data-face="4"></label></div>
+                            <div class="flex flex-col gap-1"><label class="bg-zinc-800 p-2 rounded border border-zinc-700 cursor-pointer">-Z (Back)<input type="file" class="hidden skybox-input" data-face="5"></label></div>
+                            <button id="btn-apply-skybox" class="col-span-2 bg-zinc-700 hover:bg-zinc-600 text-xs py-2 rounded mt-2">Apply Skybox</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="accordion-section">
+                <div class="accordion-header flex justify-between items-center p-4 bg-zinc-800/50 hover:bg-zinc-800 cursor-pointer" onclick="toggleAccordion('animation-settings')">
+                    <span class="font-semibold text-sm">Animation & Export</span>
+                    <i class="fas fa-chevron-down text-zinc-500 text-xs"></i>
+                </div>
+                <div id="animation-settings" class="collapse-content expanded bg-zinc-900">
+                    <div class="p-4 flex flex-col gap-4">
+                        <div class="flex items-center justify-between">
+                            <span class="text-sm">Auto Spin</span>
+                            <label class="relative inline-flex items-center cursor-pointer">
+                                <input type="checkbox" id="spin-toggle" class="sr-only peer">
+                                <div class="w-9 h-5 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-lime-500"></div>
+                            </label>
+                        </div>
+                        <div class="flex flex-col gap-1">
+                            <span class="text-xs text-zinc-400">Spin Speed</span>
+                            <input type="range" id="spin-speed" min="0.001" max="0.05" step="0.001" value="0.01" class="w-full">
+                        </div>
+                        <button id="btn-create-gif" class="w-full bg-lime-600 hover:bg-lime-500 text-white text-sm py-3 rounded font-bold transition-colors shadow-lg mt-2 flex items-center justify-center gap-2">
+                            <i class="fas fa-film"></i> Create GIF
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function toggleAccordion(id) {
+            const el = document.getElementById(id);
+            const icon = el.previousElementSibling.querySelector('i');
+            if (el.classList.contains('expanded')) {
+                el.classList.remove('expanded');
+                icon.style.transform = 'rotate(0deg)';
+            } else {
+                el.classList.add('expanded');
+                icon.style.transform = 'rotate(180deg)';
+            }
+        }
+
+        const state = {
+            colors: {
+                torso: '#ffffff',
+                sleeves: '#84cc16',
+                collar: '#84cc16',
+                hem: '#84cc16',
+                cuffs: '#ffffff',
+                inner: '#ffffff'
+            },
+            shirtType: 'mens',
+            bgColor: '#27272a',
+            bgType: 'solid',
+            skyboxImages: [null, null, null, null, null, null],
+            spin: false,
+            spinSpeed: 0.01,
+            isDrawing: false,
+            drawingMode: 'brush',
+            draggedIcon: null
+        };
+
+        const colorConfig = [
+            { id: 'torso', label: 'Torso' },
+            { id: 'sleeves', label: 'Sleeves' },
+            { id: 'collar', label: 'Collar' },
+            { id: 'hem', label: 'Bottom Hem' },
+            { id: 'cuffs', label: 'Cuffs' },
+            { id: 'inner', label: 'Inner Area' }
+        ];
+
+        const icons = [
+            '\uf004', '\uf005', '\uf028', '\uf0eb', '\uf135', '\uf188', 
+            '\uf2b9', '\uf556', '\uf521', '\uf6fc', '\uf72e', '\uf781'
+        ];
+
+        const container = document.getElementById('color-pickers-container');
+        colorConfig.forEach(c => {
+            const div = document.createElement('div');
+            div.className = 'flex flex-col gap-1';
+            div.innerHTML = `
+                <span class="text-xs text-zinc-400">${c.label}</span>
+                <input type="color" id="color-${c.id}" value="${state.colors[c.id]}" class="w-full h-8 cursor-pointer rounded">
+            `;
+            container.appendChild(div);
+        });
+
+        const iconContainer = document.getElementById('icon-container');
+        icons.forEach(ic => {
+            const i = document.createElement('i');
+            i.className = 'fas fa-icon-drag text-white';
+            i.style.fontFamily = '"Font Awesome 6 Free"';
+            i.style.fontWeight = '900';
+            i.innerText = ic;
+            i.draggable = true;
+            i.addEventListener('dragstart', (e) => {
+                state.draggedIcon = ic;
+                e.dataTransfer.setData('text/plain', ic);
+            });
+            iconContainer.appendChild(i);
+        });
+
+        const editorToggle = document.getElementById('editor-toggle');
+        const editorBody = document.getElementById('editor-body');
+        const editorPanel = document.getElementById('editor-panel');
+        let editorExpanded = true;
+        
+        editorToggle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            toggleEditor();
+        });
+        document.getElementById('editor-header').addEventListener('click', () => {
+            if(!editorExpanded) toggleEditor();
+        });
+
+        function toggleEditor() {
+            editorExpanded = !editorExpanded;
+            if (editorExpanded) {
+                editorBody.style.display = 'flex';
+                editorToggle.innerHTML = '<i class="fas fa-chevron-up"></i>';
+            } else {
+                editorBody.style.display = 'none';
+                editorToggle.innerHTML = '<i class="fas fa-chevron-down"></i>';
+            }
+        }
+
+        const fCanvas = new fabric.Canvas('fabric-canvas', {
+            width: 256,
+            height: 256,
+            backgroundColor: 'transparent',
+            preserveObjectStacking: true
+        });
+
+        const ctx = fCanvas.getContext();
+        const lineOptions = { stroke: 'rgba(255,0,0,0.5)', strokeWidth: 1 };
+        
+        fCanvas.on('object:moving', (e) => {
+            const obj = e.target;
+            const w = fCanvas.width, h = fCanvas.height;
+            const cx = w/2, cy = h/2;
+            const threshold = 10;
+            
+            if (Math.abs(obj.left + obj.width*obj.scaleX/2 - cx) < threshold) {
+                obj.left = cx - obj.width*obj.scaleX/2;
+            }
+            if (Math.abs(obj.top + obj.height*obj.scaleY/2 - cy) < threshold) {
+                obj.top = cy - obj.height*obj.scaleY/2;
+            }
+        });
+
+        fCanvas.on('after:render', () => {
+            if (fCanvas.getActiveObject() && fCanvas.getActiveObject().isMoving) {
+                const w = fCanvas.width, h = fCanvas.height;
+                const cx = w/2, cy = h/2;
+                const obj = fCanvas.getActiveObject();
+                const objCX = obj.left + obj.width*obj.scaleX/2;
+                const objCY = obj.top + obj.height*obj.scaleY/2;
+                
+                if (Math.abs(objCX - cx) < 1) {
+                    fCanvas.contextContainer.strokeStyle = 'red';
+                    fCanvas.contextContainer.beginPath();
+                    fCanvas.contextContainer.moveTo(cx, 0);
+                    fCanvas.contextContainer.lineTo(cx, h);
+                    fCanvas.contextContainer.stroke();
+                }
+                if (Math.abs(objCY - cy) < 1) {
+                    fCanvas.contextContainer.strokeStyle = 'red';
+                    fCanvas.contextContainer.beginPath();
+                    fCanvas.contextContainer.moveTo(0, cy);
+                    fCanvas.contextContainer.lineTo(w, cy);
+                    fCanvas.contextContainer.stroke();
+                }
+            }
+            if(shirtMat) shirtMat.map.needsUpdate = true;
+        });
+
+        fCanvas.on('selection:created', showObjTools);
+        fCanvas.on('selection:updated', showObjTools);
+        fCanvas.on('selection:cleared', hideObjTools);
+
+        function showObjTools(e) {
+            document.getElementById('object-tools').style.display = 'flex';
+            if (e.selected[0].fill) document.getElementById('obj-color').value = e.selected[0].fill;
+        }
+        function hideObjTools() {
+            document.getElementById('object-tools').style.display = 'none';
+        }
+
+        document.getElementById('obj-color').addEventListener('input', (e) => {
+            const act = fCanvas.getActiveObject();
+            if (act) {
+                if (act.type === 'path-group' || act.type === 'path') {
+                    act.set({ fill: e.target.value });
+                } else {
+                    act.set('fill', e.target.value);
+                }
+                fCanvas.renderAll();
+            }
+        });
+
+        document.getElementById('btn-del-obj').addEventListener('click', () => {
+            const act = fCanvas.getActiveObjects();
+            if (act.length) {
+                act.forEach(a => fCanvas.remove(a));
+                fCanvas.discardActiveObject().renderAll();
+            }
+        });
+
+        document.getElementById('btn-draw').addEventListener('click', () => {
+            state.isDrawing = !state.isDrawing;
+            fCanvas.isDrawingMode = state.isDrawing;
+            document.getElementById('btn-draw').style.backgroundColor = state.isDrawing ? '#84cc16' : '#27272a';
+            document.getElementById('draw-tools').style.display = state.isDrawing ? 'flex' : 'none';
+            if (state.isDrawing && !editorExpanded) toggleEditor();
+        });
+
+        document.getElementById('draw-color').addEventListener('input', (e) => {
+            fCanvas.freeDrawingBrush.color = e.target.value;
+            state.drawingMode = 'brush';
+        });
+
+        document.getElementById('draw-size').addEventListener('input', (e) => {
+            fCanvas.freeDrawingBrush.width = parseInt(e.target.value, 10);
+        });
+
+        document.getElementById('btn-erase').addEventListener('click', () => {
+            state.drawingMode = state.drawingMode === 'brush' ? 'eraser' : 'brush';
+            if (state.drawingMode === 'eraser') {
+                fCanvas.freeDrawingBrush.color = 'transparent';
+                fCanvas.freeDrawingBrush.globalCompositeOperation = 'destination-out';
+                document.getElementById('btn-erase').style.backgroundColor = '#84cc16';
+            } else {
+                fCanvas.freeDrawingBrush.color = document.getElementById('draw-color').value;
+                fCanvas.freeDrawingBrush.globalCompositeOperation = 'source-over';
+                document.getElementById('btn-erase').style.backgroundColor = '#3f3f46';
+            }
+        });
+
+        document.getElementById('btn-clear').addEventListener('click', () => {
+            fCanvas.clear();
+            fCanvas.backgroundColor = 'transparent';
+            fCanvas.renderAll();
+        });
+
+        document.getElementById('btn-add-text').addEventListener('click', () => {
+            const val = document.getElementById('text-input').value || 'Text';
+            const t = new fabric.Text(val, {
+                left: 128, top: 128, originX: 'center', originY: 'center',
+                fontFamily: 'sans-serif', fill: '#000000', fontSize: 32
+            });
+            fCanvas.add(t);
+            fCanvas.setActiveObject(t);
+            if(!editorExpanded) toggleEditor();
+        });
+
+        document.getElementById('image-upload').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (f) => {
+                    fabric.Image.fromURL(f.target.result, (img) => {
+                        img.scaleToWidth(100);
+                        img.set({ left: 128, top: 128, originX: 'center', originY: 'center' });
+                        fCanvas.add(img);
+                        fCanvas.setActiveObject(img);
+                        if(!editorExpanded) toggleEditor();
+                    });
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        function dropIconOnCanvas(iconStr, x, y) {
+            const t = new fabric.Text(iconStr, {
+                left: x, top: y, originX: 'center', originY: 'center',
+                fontFamily: '"Font Awesome 6 Free"', fontWeight: 900, fill: '#000000', fontSize: 40
+            });
+            fCanvas.add(t);
+            fCanvas.setActiveObject(t);
+            if(!editorExpanded) toggleEditor();
+        }
+
+        const fabContainer = document.getElementById('fabric-container');
+        fabContainer.addEventListener('dragover', e => e.preventDefault());
+        fabContainer.addEventListener('drop', e => {
+            e.preventDefault();
+            if (state.draggedIcon) {
+                const rect = fabContainer.getBoundingClientRect();
+                dropIconOnCanvas(state.draggedIcon, e.clientX - rect.left, e.clientY - rect.top);
+                state.draggedIcon = null;
+            }
+        });
+
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(state.bgColor);
+
+        const gridHelper = new THREE.GridHelper(100, 100, 0x444444, 0x222222);
+        gridHelper.position.y = -15;
+        scene.add(gridHelper);
+
+        const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+        camera.position.set(0, 0, 50);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, preserveDrawingBuffer: true });
+        const canvasContainer = document.getElementById('canvas-container');
+        canvasContainer.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 20;
+        controls.maxDistance = 100;
+
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+        scene.add(ambientLight);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(20, 40, 20);
+        scene.add(dirLight);
+        const backLight = new THREE.DirectionalLight(0xffffff, 0.3);
+        backLight.position.set(-20, 20, -20);
+        scene.add(backLight);
+
+        let shirtGroup = new THREE.Group();
+        scene.add(shirtGroup);
+
+        const fabTexture = new THREE.CanvasTexture(document.getElementById('fabric-canvas'));
+        fabTexture.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        fabTexture.wrapS = THREE.RepeatWrapping;
+        
+        let materials = {};
+        let shirtMat;
+
+        function updateMaterials() {
+            materials.torso = new THREE.MeshStandardMaterial({ 
+                color: state.colors.torso, 
+                map: fabTexture,
+                roughness: 0.8,
+                side: THREE.FrontSide
+            });
+            shirtMat = materials.torso;
+
+            materials.inner = new THREE.MeshStandardMaterial({
+                color: state.colors.inner,
+                roughness: 0.9,
+                side: THREE.BackSide
+            });
+
+            const parts = ['sleeves', 'collar', 'hem', 'cuffs'];
+            parts.forEach(p => {
+                materials[p] = new THREE.MeshStandardMaterial({ color: state.colors[p], roughness: 0.8 });
+            });
+        }
+
+        function createShirtModel() {
+            if (state.shirtType === 'realistic_glb') {
+                loadExternalModel('https://cdn.jsdelivr.net/gh/adrianhajdin/project_threejs_ai@main/client/public/shirt_baked.glb', 'glb');
+                return;
+            }
+
+            scene.remove(shirtGroup);
+            shirtGroup = new THREE.Group();
+            
+            updateMaterials();
+
+            const createTorsoGeo = () => {
+                let geo;
+                if (state.shirtType === 'womens') {
+                    geo = new THREE.CylinderGeometry(5.5, 6, 16, 32, 16, true);
+                    const pos = geo.attributes.position;
+                    for(let i=0; i<pos.count; i++) {
+                        const y = pos.getY(i);
+                        const factor = 1 - 0.15 * Math.cos((y/16)*Math.PI);
+                        pos.setX(i, pos.getX(i) * factor * 0.5);
+                        pos.setZ(i, pos.getZ(i) * factor * 0.3);
+                    }
+                    geo.computeVertexNormals();
+                } else {
+                    geo = new THREE.CylinderGeometry(6, 6, 16, 32, 1, true);
+                    geo.scale(0.8, 1, 0.3);
+                }
+                
+                const uvs = geo.attributes.uv;
+                for(let i=0; i<uvs.count; i++) {
+                    let u = uvs.getX(i);
+                    u = u * 2 - 0.5;
+                    uvs.setX(i, u);
+                }
+                return geo;
+            };
+
+            const torsoGeo = createTorsoGeo();
+            const torso = new THREE.Mesh(torsoGeo, materials.torso);
+            const innerTorso = new THREE.Mesh(torsoGeo, materials.inner);
+            shirtGroup.add(torso);
+            shirtGroup.add(innerTorso);
+            torso.userData = { isTorso: true };
+
+            const collarGeo = new THREE.TorusGeometry(3.2, 0.6, 16, 32);
+            if (state.shirtType === 'womens') collarGeo.scale(1, 0.8, 1.2);
+            const collar = new THREE.Mesh(collarGeo, materials.collar);
+            collar.position.y = 8;
+            collar.rotation.x = Math.PI / 2;
+            shirtGroup.add(collar);
+
+            const hemGeo = new THREE.CylinderGeometry(6.1, 6.1, 0.8, 32, 1, true);
+            if (state.shirtType === 'womens') {
+                const hPos = hemGeo.attributes.position;
+                for(let i=0; i<hPos.count; i++) {
+                    hPos.setX(i, hPos.getX(i) * 0.5);
+                    hPos.setZ(i, hPos.getZ(i) * 0.3);
+                }
+                hemGeo.computeVertexNormals();
+            } else {
+                hemGeo.scale(0.81, 1, 0.31);
+            }
+            const hem = new THREE.Mesh(hemGeo, materials.hem);
+            hem.position.y = -7.6;
+            shirtGroup.add(hem);
+
+            const sleeveLen = state.shirtType === 'longsleeve' ? 12 : 4;
+            const sleeveGeo = new THREE.CylinderGeometry(2, 1.5, sleeveLen, 16, 1, true);
+            const cuffGeo = new THREE.CylinderGeometry(1.55, 1.55, 0.8, 16, 1, true);
+
+            const lSleeve = new THREE.Mesh(sleeveGeo, materials.sleeves);
+            const lInner = new THREE.Mesh(sleeveGeo, materials.inner);
+            lSleeve.position.set(-6, 6 - (sleeveLen/2 - 2), 0);
+            lSleeve.rotation.z = Math.PI / 4;
+            lInner.position.copy(lSleeve.position);
+            lInner.rotation.copy(lSleeve.rotation);
+            shirtGroup.add(lSleeve, lInner);
+
+            const lCuff = new THREE.Mesh(cuffGeo, materials.cuffs);
+            lCuff.position.set(0, -sleeveLen/2, 0);
+            lSleeve.add(lCuff);
+
+            const rSleeve = new THREE.Mesh(sleeveGeo, materials.sleeves);
+            const rInner = new THREE.Mesh(sleeveGeo, materials.inner);
+            rSleeve.position.set(6, 6 - (sleeveLen/2 - 2), 0);
+            rSleeve.rotation.z = -Math.PI / 4;
+            rInner.position.copy(rSleeve.position);
+            rInner.rotation.copy(rSleeve.rotation);
+            shirtGroup.add(rSleeve, rInner);
+
+            const rCuff = new THREE.Mesh(cuffGeo, materials.cuffs);
+            rCuff.position.set(0, -sleeveLen/2, 0);
+            rSleeve.add(rCuff);
+
+            scene.add(shirtGroup);
+        }
+
+        function loadExternalModel(url, extension) {
+            updateMaterials();
+
+            const applyMaterialAndBounding = (object) => {
+                scene.remove(shirtGroup);
+                shirtGroup = new THREE.Group();
+
+                object.traverse((child) => {
+                    if (child.isMesh) {
+                        child.material = materials.torso;
+                        child.userData = { isTorso: true };
+                    }
+                });
+
+                const box = new THREE.Box3().setFromObject(object);
+                const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
+                const maxDim = Math.max(size.x, size.y, size.z);
+                const targetScale = 20 / maxDim;
+
+                object.scale.setScalar(targetScale);
+                object.position.sub(center.multiplyScalar(targetScale));
+
+                shirtGroup.add(object);
+                scene.add(shirtGroup);
+            };
+
+            if (extension === 'obj') {
+                const loader = new THREE.OBJLoader();
+                loader.load(url, applyMaterialAndBounding, undefined, (err) => console.error('Error loading OBJ:', err));
+            } else {
+                const loader = new THREE.GLTFLoader();
+                loader.load(url, (gltf) => applyMaterialAndBounding(gltf.scene), undefined, (err) => console.error('Error loading GLTF:', err));
+            }
+        }
+
+        createShirtModel();
+
+        document.getElementById('model-file-upload').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const url = URL.createObjectURL(file);
+                const ext = file.name.split('.').pop().toLowerCase();
+                loadExternalModel(url, ext);
+            }
+        });
+
+        function resize() {
+            const w = canvasContainer.clientWidth;
+            const h = canvasContainer.clientHeight;
+            renderer.setSize(w, h);
+            camera.aspect = w / h;
+            camera.updateProjectionMatrix();
+        }
+        window.addEventListener('resize', resize);
+        resize();
+
+        document.getElementById('shirt-model-select').addEventListener('change', (e) => {
+            state.shirtType = e.target.value;
+            createShirtModel();
+        });
+
+        colorConfig.forEach(c => {
+            document.getElementById(`color-${c.id}`).addEventListener('input', (e) => {
+                state.colors[c.id] = e.target.value;
+                if (materials[c.id]) {
+                    materials[c.id].color.set(e.target.value);
+                }
+            });
+        });
+
+        const bgType = document.getElementById('bg-type');
+        const bgSolid = document.getElementById('bg-solid-controls');
+        const bgImg = document.getElementById('bg-img-controls');
+        const bgSky = document.getElementById('bg-skybox-controls');
+
+        bgType.addEventListener('change', (e) => {
+            state.bgType = e.target.value;
+            bgSolid.style.display = state.bgType === 'solid' ? 'flex' : 'none';
+            bgImg.style.display = state.bgType === 'image' ? 'block' : 'none';
+            bgSky.style.display = state.bgType === 'skybox' ? 'grid' : 'none';
+            updateBackground();
+        });
+
+        document.getElementById('bg-color').addEventListener('input', (e) => {
+            state.bgColor = e.target.value;
+            if (state.bgType === 'solid') updateBackground();
+        });
+
+        document.getElementById('bg-img-upload').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const url = URL.createObjectURL(file);
+                const loader = new THREE.TextureLoader();
+                loader.load(url, (tex) => {
+                    scene.background = tex;
+                });
+            }
+        });
+
+        document.querySelectorAll('.skybox-input').forEach(input => {
+            input.addEventListener('change', (e) => {
+                const file = e.target.files[0];
+                const face = parseInt(e.target.dataset.face);
+                if (file) {
+                    state.skyboxImages[face] = URL.createObjectURL(file);
+                    e.target.parentElement.style.borderColor = '#84cc16';
+                }
+            });
+        });
+
+        document.getElementById('btn-apply-skybox').addEventListener('click', () => {
+            if (state.skyboxImages.every(img => img !== null)) {
+                const loader = new THREE.CubeTextureLoader();
+                loader.load(state.skyboxImages, (tex) => {
+                    scene.background = tex;
+                });
+            } else {
+                alert("Please upload all 6 images for the skybox.");
+            }
+        });
+
+        function updateBackground() {
+            if (state.bgType === 'solid') {
+                scene.background = new THREE.Color(state.bgColor);
+            }
+        }
+
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+
+        canvasContainer.addEventListener('dragover', e => e.preventDefault());
+        canvasContainer.addEventListener('drop', e => {
+            e.preventDefault();
+            if (state.draggedIcon) {
+                const rect = canvasContainer.getBoundingClientRect();
+                mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+                mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+                raycaster.setFromCamera(mouse, camera);
+                const intersects = raycaster.intersectObjects(shirtGroup.children);
+                
+                let hitTorso = false;
+                for (let hit of intersects) {
+                    if (hit.object.userData.isTorso && hit.uv) {
+                        const u = hit.uv.x;
+                        const v = hit.uv.y;
+                        const x = u * fCanvas.width;
+                        const y = (1 - v) * fCanvas.height;
+                        dropIconOnCanvas(state.draggedIcon, x, y);
+                        hitTorso = true;
+                        break;
+                    }
+                }
+                if (!hitTorso) {
+                    dropIconOnCanvas(state.draggedIcon, 128, 128);
+                }
+                state.draggedIcon = null;
+            }
+        });
+
+        document.getElementById('spin-toggle').addEventListener('change', (e) => {
+            state.spin = e.target.checked;
+        });
+        document.getElementById('spin-speed').addEventListener('input', (e) => {
+            state.spinSpeed = parseFloat(e.target.value);
+        });
+
+        let gifWorkerScript = '';
+        fetch('https://cdnjs.cloudflare.com/ajax/libs/gif.js/0.2.0/gif.worker.js')
+            .then(res => res.text())
+            .then(text => {
+                const blob = new Blob([text], {type: 'application/javascript'});
+                gifWorkerScript = URL.createObjectURL(blob);
+            });
+
+        document.getElementById('btn-create-gif').addEventListener('click', () => {
+            if (!gifWorkerScript) return;
+            const overlay = document.getElementById('recordingOverlay');
+            overlay.classList.add('active');
+
+            const initRot = shirtGroup.rotation.y;
+            shirtGroup.rotation.y = 0;
+
+            const gif = new GIF({
+                workers: 2,
+                quality: 10,
+                width: canvasContainer.clientWidth,
+                height: canvasContainer.clientHeight,
+                workerScript: gifWorkerScript
+            });
+
+            const frames = 30;
+            const angleStep = (Math.PI * 2) / frames;
+            let currentFrame = 0;
+
+            function captureFrame() {
+                if (currentFrame < frames) {
+                    shirtGroup.rotation.y = currentFrame * angleStep;
+                    renderer.render(scene, camera);
+                    gif.addFrame(renderer.domElement, { copy: true, delay: 50 });
+                    currentFrame++;
+                    requestAnimationFrame(captureFrame);
+                } else {
+                    shirtGroup.rotation.y = initRot;
+                    gif.on('finished', (blob) => {
+                        overlay.classList.remove('active');
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement('a');
+                        a.href = url;
+                        a.download = 'shirt-design.gif';
+                        a.click();
+                    });
+                    gif.render();
+                }
+            }
+            captureFrame();
+        });
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (state.spin && !document.getElementById('recordingOverlay').classList.contains('active')) {
+                shirtGroup.rotation.y += state.spinSpeed;
+            }
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        document.fonts.ready.then(() => {
+            fCanvas.renderAll();
+        });
+
+        animate();
+    </script>
+</body>
+</html>
